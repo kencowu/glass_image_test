@@ -96,8 +96,14 @@ class PhoneImageProcessor:
             phone_images.append(processed_phone)
             
             # Save the processed phone image
-            output_path = os.path.join(self.output_dir, f"phone_{i+1}.jpg")
+            output_path = os.path.join(self.output_dir, f"phone_{i+1}.png")
             cv2.imwrite(output_path, processed_phone)
+            
+            # Calculate percentage of background pixels
+            total_pixels = processed_phone.shape[0] * processed_phone.shape[1]
+            background_pixels = np.sum(processed_phone[:, :, 3] == 0)  # Count transparent pixels
+            background_percentage = (background_pixels / total_pixels) * 100
+            print(f"Background percentage: {background_percentage:.2f}%")
             print(f"Saved to: {output_path}")
             print(f"Processed size: {processed_phone.shape}")
         
@@ -141,6 +147,40 @@ class PhoneImageProcessor:
             
         return angle
 
+    def _create_phone_mask(self, image: np.ndarray) -> np.ndarray:
+        """
+        Create a mask for the phone using color and edge information.
+        
+        Args:
+            image: Input image
+            
+        Returns:
+            Binary mask where phone is white (255) and background is black (0)
+        """
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Apply bilateral filter to reduce noise while preserving edges
+        blurred = cv2.bilateralFilter(gray, 9, 75, 75)
+        
+        # Apply adaptive thresholding
+        binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                     cv2.THRESH_BINARY_INV, 11, 2)
+        
+        # Apply morphological operations to clean up the mask
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        
+        # Find the largest contour (should be the phone)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            mask = np.zeros_like(mask)
+            cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+        
+        return mask
+
     def _process_phone_image(self, phone_img: np.ndarray) -> np.ndarray:
         """
         Process a single phone image to standardize its size and orientation.
@@ -159,19 +199,26 @@ class PhoneImageProcessor:
         
         # Calculate the angle of the phone
         current_angle = self._calculate_phone_angle(binary)
-        print(f"Detected angle: {current_angle:.2f} degrees")
+        print(f"Detected phone angle: {current_angle:.2f} degrees")
         
         # Rotate the image to align with vertical orientation
         if abs(current_angle - 90) > 0.5:  # Only rotate if not close to vertical
-            rotated = imutils.rotate_bound(phone_img, 90 - current_angle)
+            rotation_angle = 90 - current_angle
+            print(f"Rotating image by {rotation_angle:.2f} degrees to make it vertical")
+            rotated = imutils.rotate_bound(phone_img, rotation_angle)
             # Update binary image and gray after rotation
             gray = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
             _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            print("Image has been rotated to vertical orientation")
         else:
+            print("Image is already vertical (within 0.5 degrees), no rotation needed")
             rotated = phone_img
         
-        # Find contours in the binary image
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Create a mask for the phone
+        mask = self._create_phone_mask(rotated)
+        
+        # Find contours in the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if contours:
             # Get the largest contour (should be the phone)
@@ -189,8 +236,11 @@ class PhoneImageProcessor:
             
             # Crop the image
             cropped = rotated[y:y+h, x:x+w]
+            # Update mask for cropped region
+            mask = mask[y:y+h, x:x+w]
         else:
             cropped = rotated
+            mask = self._create_phone_mask(cropped)
         
         # Resize to target size while maintaining aspect ratio
         h, w = cropped.shape[:2]
@@ -204,18 +254,28 @@ class PhoneImageProcessor:
             new_w = self.target_size[0]  # Cap width at target width
             new_h = int(new_w / aspect)  # Recalculate height
         
-        # Resize the image
+        # Resize the image and mask
         resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        resized_mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
         
-        # Create a black background of target size
-        final = np.zeros((self.target_size[1], self.target_size[0], 3), dtype=np.uint8)
+        # Create a transparent background
+        final = np.zeros((self.target_size[1], self.target_size[0], 4), dtype=np.uint8)
+        
+        # Convert resized image to RGBA
+        if resized.shape[2] == 3:
+            resized_rgba = cv2.cvtColor(resized, cv2.COLOR_BGR2BGRA)
+        else:
+            resized_rgba = resized
+        
+        # Apply the mask to create transparency
+        resized_rgba[:, :, 3] = resized_mask
         
         # Calculate position to paste the resized image (center it)
         x_offset = (self.target_size[0] - new_w) // 2
         y_offset = (self.target_size[1] - new_h) // 2
         
-        # Paste the resized image onto the black background
-        final[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
+        # Paste the resized image onto the transparent background
+        final[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized_rgba
         
         return final
 
@@ -244,7 +304,7 @@ def process_phone_image(image_path: str, output_dir: str = "processed_phones") -
     # Get the paths of saved images
     saved_paths = []
     for i in range(len(phone_images)):
-        saved_paths.append(os.path.join(output_dir, f"phone_{i+1}.jpg"))
+        saved_paths.append(os.path.join(output_dir, f"phone_{i+1}.png"))
     
     return saved_paths
 
