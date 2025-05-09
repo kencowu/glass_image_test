@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.conda/
+conda-env/
+glass_lab_image_test/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+source_image_jpg/
+processed_phones/
+*.jpg
+*.jpeg
+*.png
+
+# Large files and packages
+*.pth
+sam_vit_h_4b8939.pth
+*.onnx
+*.h5
+*.hdf5
+*.model
+*.weights
+*.bin
+*.pt
+*.pkl
+*.joblib
+*.npy
+*.npz
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Model files
+.u2net/
+models/
+weights/
+checkpoints/
+sam/
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+logs/ 
