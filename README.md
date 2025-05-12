@@ -1,75 +1,61 @@
-# Phone Image Processor
+# Phone Image Processing
 
-A Python tool for processing phone images with background removal using the `rembg` library.
+This project contains scripts for processing phone images using various computer vision techniques.
 
 ## Features
 
-- Automatic phone detection and extraction from images
-- Background removal using the `rembg` library
-- Image rotation and orientation correction
-- Size standardization with aspect ratio preservation
-- Transparent background output
+- Phone detection using YOLOv8
+- Background removal
+- Image preprocessing and enhancement
 
 ## Requirements
 
 - Python 3.8+
 - OpenCV
+- Ultralytics YOLO
 - NumPy
-- Pillow
-- imutils
-- rembg
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/phone-image-processor.git
-cd phone-image-processor
+git clone <repository-url>
+cd <repository-name>
 ```
 
 2. Create and activate a conda environment:
 ```bash
-conda create -n phone_processor python=3.10
-conda activate phone_processor
+conda create -n lab_image_test python=3.8
+conda activate lab_image_test
 ```
 
-3. Install the required packages:
+3. Install dependencies:
 ```bash
-pip install opencv-python numpy pillow imutils rembg
+pip install ultralytics opencv-python numpy
 ```
 
 ## Usage
 
-1. Place your input images in the `source_image_jpg` directory.
+### Phone Detection
 
-2. Run the script:
+To detect phones in an image using YOLOv8:
+
 ```bash
-python phone_image_processor_rembg.py
+python yolo_phone_detector.py path/to/your/image.jpg
 ```
 
-3. Processed images will be saved in the `processed_phones` directory.
+The script will:
+1. Load the YOLOv8 model
+2. Process the input image
+3. Detect phones in the image
+4. Save detected phones to the `yolo_processed_phones` directory
 
-## How it Works
+## Project Structure
 
-1. The script scans the `source_image_jpg` directory for JPG/JPEG files.
-2. For each image:
-   - Detects phones using contour analysis
-   - Removes background using `rembg`
-   - Corrects orientation if needed
-   - Standardizes size while maintaining aspect ratio
-   - Saves the processed image with a transparent background
-
-## Output
-
-- Processed images are saved as PNG files with transparent backgrounds
-- Each phone is saved as a separate file in the `processed_phones` directory
-- The script maintains the original aspect ratio while standardizing the size
+- `yolo_phone_detector.py`: Main script for phone detection using YOLOv8
+- `yolo_processed_phones/`: Directory for processed phone images
+- `source_image/`: Directory for source images
 
 ## License
 
-MIT License
-
-## Acknowledgments
-
-- [rembg](https://github.com/danielgatis/rembg) for background removal
-- OpenCV for image processing 
+[Your chosen license] 

@@ -1,36 +1,31 @@
-from ultralytics import YOLO
+import tensorflow as tf
 import cv2
 import numpy as np
 from typing import List, Tuple
 import os
-import sys
 
-class YOLOPhoneDetector:
-    def __init__(self, target_size: Tuple[int, int] = (300, 600), conf_threshold: float = 0.15):
+class TensorFlowPhoneDetector:
+    def __init__(self, target_size: Tuple[int, int] = (300, 600)):
         """
-        Initialize the YOLO phone detector.
+        Initialize the TensorFlow phone detector.
         
         Args:
             target_size: Tuple of (width, height) for the output images
-            conf_threshold: Confidence threshold for detections
         """
-        print("Initializing YOLO model...")
-        # Load the YOLOv8 detection-only model
-        self.model = YOLO('yolov8m.pt')
-        # Set model parameters
-        self.model.conf = conf_threshold  # Even lower confidence threshold
-        self.model.iou = 0.45  # IOU threshold for NMS
-        self.model.agnostic = True  # Class-agnostic NMS
-        self.model.multi_label = True  # Allow multiple labels per box
-        print("YOLO model loaded successfully")
+        print("Initializing TensorFlow model...")
+        # Load the pre-trained model
+        self.model = tf.saved_model.load('models/ssd_mobilenet_v2_fpnlite_640x640_coco17_tpu-8/saved_model')
+        self.model = self.model.signatures['serving_default']
+        print("TensorFlow model loaded successfully")
+        
         self.target_size = target_size
-        self.output_dir = "yolo_processed_phones"
+        self.output_dir = "tf_processed_phones"
         os.makedirs(self.output_dir, exist_ok=True)
         print(f"Output directory created/verified: {self.output_dir}")
         
     def detect_phones(self, image_path: str) -> List[np.ndarray]:
         """
-        Detect and extract individual phone images using YOLOv8.
+        Detect and extract individual phone images using TensorFlow.
         
         Args:
             image_path: Path to the input image
@@ -44,42 +39,41 @@ class YOLOPhoneDetector:
         if image is None:
             raise ValueError(f"Could not read image at {image_path}")
         print(f"Image read successfully. Shape: {image.shape}")
-            
-        # Run YOLOv8 inference with specific parameters
-        print("Running YOLO inference...")
-        results = self.model(image, verbose=True)
-        print("YOLO inference completed")
         
-        # Create a copy of the image for visualization
-        vis_image = image.copy()
+        # Prepare image for TensorFlow
+        input_tensor = tf.convert_to_tensor(image)
+        input_tensor = input_tensor[tf.newaxis, ...]
+        
+        # Run inference
+        print("Running TensorFlow inference...")
+        detections = self.model(input_tensor)
+        print("TensorFlow inference completed")
         
         # Process detections
         phone_images = []
-        print(f"Number of detections: {len(results[0].boxes.data)}")
+        boxes = detections['detection_boxes'][0].numpy()
+        scores = detections['detection_scores'][0].numpy()
+        classes = detections['detection_classes'][0].numpy()
         
-        # Print all detections for debugging
-        print("\nAll detections:")
-        for i, detection in enumerate(results[0].boxes.data):
-            x1, y1, x2, y2, conf, cls = detection
-            x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-            print(f"Detection {i+1}: Class {cls}, Confidence {conf:.2f}")
-            
-            # Draw all detections on visualization image
-            cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(vis_image, f"Class {cls:.0f} ({conf:.2f})", 
-                       (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-            # Check if detected object is a cell phone (class 67 in COCO dataset)
-            if cls == 67:  # Cell phone class
+        print(f"Number of detections: {len(boxes)}")
+        for i, (box, score, class_id) in enumerate(zip(boxes, scores, classes)):
+            # Check if detected object is a cell phone (class 77 in COCO dataset)
+            if class_id == 77 and score > 0.1:  # Cell phone class with very low confidence threshold
                 print(f"Processing phone detection {i+1}")
+                # Convert normalized coordinates to pixel coordinates
+                h, w = image.shape[:2]
+                y1, x1, y2, x2 = box
+                x1, y1 = int(x1 * w), int(y1 * h)
+                x2, y2 = int(x2 * w), int(y2 * h)
+                
                 # Add padding
-                padding = 20  # Increased padding
+                padding = 10
                 x1 = max(0, x1 - padding)
                 y1 = max(0, y1 - padding)
-                x2 = min(image.shape[1], x2 + padding)
-                y2 = min(image.shape[0], y2 + padding)
+                x2 = min(w, x2 + padding)
+                y2 = min(h, y2 + padding)
                 
-                # Crop phone image using bounding box only
+                # Crop phone image
                 phone_img = image[y1:y2, x1:x2]
                 
                 # Process and resize
@@ -90,18 +84,7 @@ class YOLOPhoneDetector:
                 output_path = os.path.join(self.output_dir, f"phone_{i+1}.jpg")
                 cv2.imwrite(output_path, processed_phone)
                 print(f"Saved phone {i+1} to: {output_path}")
-                print(f"Confidence: {conf:.2f}")
-        
-        # Save visualization image
-        vis_path = os.path.join(self.output_dir, "detection_visualization.jpg")
-        cv2.imwrite(vis_path, vis_image)
-        print(f"\nSaved detection visualization to: {vis_path}")
-        
-        # Print COCO class names for reference
-        print("\nCOCO class names for reference:")
-        coco_names = self.model.names
-        for class_id, class_name in coco_names.items():
-            print(f"Class {class_id}: {class_name}")
+                print(f"Confidence: {score:.2f}")
         
         return phone_images
     
@@ -152,9 +135,9 @@ class YOLOPhoneDetector:
         
         return final
 
-def detect_phones_yolo(image_path: str) -> List[str]:
+def detect_phones_tensorflow(image_path: str) -> List[str]:
     """
-    Process an image containing multiple phones using YOLOv8.
+    Process an image containing multiple phones using TensorFlow.
     
     Args:
         image_path: Path to the input image
@@ -163,20 +146,21 @@ def detect_phones_yolo(image_path: str) -> List[str]:
         List of paths to the saved phone images
     """
     print(f"Starting phone detection for image: {image_path}")
-    detector = YOLOPhoneDetector(conf_threshold=0.15)  # Even lower confidence threshold
+    detector = TensorFlowPhoneDetector()
     phone_images = detector.detect_phones(image_path)
     
     return [os.path.join(detector.output_dir, f"phone_{i+1}.jpg") 
             for i in range(len(phone_images))]
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         image_path = sys.argv[1]
     else:
         image_path = "modern-touch-screen-smartphone-broken-600nw-2524629559.webp"
     try:
         print(f"Processing image: {image_path}")
-        saved_paths = detect_phones_yolo(image_path)
+        saved_paths = detect_phones_tensorflow(image_path)
         print(f"\nProcessed {len(saved_paths)} phones:")
         for path in saved_paths:
             print(f"- {path}")
@@ -184,3 +168,5 @@ if __name__ == "__main__":
         print(f"Error processing image: {e}")
         import traceback
         traceback.print_exc() 
+
+        

@@ -24,9 +24,10 @@ wheels/
 venv/
 env/
 ENV/
-.conda/
-conda-env/
-glass_lab_image_test/
+.env
+.venv
+env.bak/
+venv.bak/
 
 # IDE
 .idea/
@@ -34,12 +35,21 @@ glass_lab_image_test/
 *.swp
 *.swo
 
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
 # Project specific
-source_image_jpg/
-processed_phones/
+yolo_processed_phones/
 *.jpg
 *.jpeg
 *.png
+*.webp
 
 # Large files and packages
 *.pth
@@ -71,4 +81,8 @@ sam/
 *.log
 *.sqlite
 *.db
-logs/ 
+logs/
+
+# YOLO model files
+*.pt
+yolov8*.pt 
