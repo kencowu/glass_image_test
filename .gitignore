@@ -46,10 +46,15 @@ Thumbs.db
 
 # Project specific
 yolo_processed_phones/
+# Ignore images except in preprocessed_images directory
 *.jpg
 *.jpeg
 *.png
 *.webp
+!preprocessed_images/*.jpg
+!preprocessed_images/*.jpeg
+!preprocessed_images/*.png
+!preprocessed_images/*.webp
 
 # Large files and packages
 *.pth
