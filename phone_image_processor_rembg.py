@@ -265,13 +265,12 @@ class PhoneImageProcessor:
         
         return final
 
-def process_phone_image(image_path: str, output_dir: str = "processed_phones") -> List[str]:
+def process_phone_image(image_path: str) -> List[str]:
     """
-    Process an image containing multiple phones and save individual phone images.
+    Process an image containing multiple phones.
     
     Args:
         image_path: Path to the input image
-        output_dir: Directory to save processed phone images
         
     Returns:
         List of paths to the saved phone images
@@ -281,44 +280,40 @@ def process_phone_image(image_path: str, output_dir: str = "processed_phones") -
     if image is None:
         raise ValueError(f"Could not read image at {image_path}")
     
-    # Initialize processor
-    processor = PhoneImageProcessor()
-    
     # Process the image
+    processor = PhoneImageProcessor()
     phone_images = processor.detect_phones(image)
     
-    # Get the paths of saved images
-    saved_paths = []
-    for i in range(len(phone_images)):
-        saved_paths.append(os.path.join(output_dir, f"phone_{i+1}.png"))
+    return [os.path.join(processor.output_dir, f"phone_{i+1}.png") 
+            for i in range(len(phone_images))]
+
+def main():
+    # Set input directory
+    input_dir = "processed_phones"
     
-    return saved_paths
+    # Get all image files from input directory
+    image_files = [f for f in os.listdir(input_dir) 
+                  if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp'))]
+    
+    print(f"\nFound {len(image_files)} images to process:")
+    for img in image_files:
+        print(f"- {img}")
+    
+    # Process each image
+    total_processed = 0
+    for image_file in image_files:
+        try:
+            image_path = os.path.join(input_dir, image_file)
+            print(f"\nProcessing {image_file}...")
+            saved_paths = process_phone_image(image_path)
+            total_processed += len(saved_paths)
+            print(f"Successfully processed {len(saved_paths)} phones from {image_file}")
+        except Exception as e:
+            print(f"Error processing {image_file}: {str(e)}")
+            continue
+    
+    print(f"\nProcessing complete!")
+    print(f"Successfully processed {total_processed} phones from {len(image_files)} images")
 
 if __name__ == "__main__":
-    # Process all JPG files in source_image_jpg directory
-    source_dir = "source_image_jpg"
-    if not os.path.exists(source_dir):
-        print(f"Error: Directory {source_dir} does not exist")
-        exit(1)
-        
-    # Get all jpg/jpeg files
-    image_files = [f for f in os.listdir(source_dir) if f.lower().endswith(('.jpg', '.jpeg'))]
-    
-    if not image_files:
-        print(f"No JPG/JPEG files found in {source_dir}")
-        exit(1)
-        
-    print(f"Found {len(image_files)} JPG/JPEG files to process")
-    
-    # Process each file
-    for image_file in image_files:
-        image_path = os.path.join(source_dir, image_file)
-        print(f"\nProcessing {image_file}...")
-        try:
-            saved_paths = process_phone_image(image_path)
-            print(f"Successfully processed {image_file}:")
-            for path in saved_paths:
-                print(f"- {path}")
-        except Exception as e:
-            print(f"Error processing {image_file}: {e}")
-            continue 
+    main() 
