@@ -368,58 +368,73 @@ class PhoneImageProcessor:
 
 def process_phone_image(image_path: str, output_dir: str = "processed_phones") -> List[str]:
     """
-    Process an image containing multiple phones and save individual phone images.
+    Process a single phone image and save the results.
     
     Args:
         image_path: Path to the input image
-        output_dir: Directory to save processed phone images
+        output_dir: Directory to save processed images
         
     Returns:
-        List of paths to the saved phone images
+        List of paths to the processed images
     """
-    # Read the image
-    image = cv2.imread(image_path)
-    if image is None:
-        raise ValueError(f"Could not read image at {image_path}")
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
     
     # Initialize processor
     processor = PhoneImageProcessor()
     
-    # Process the image
-    phone_images = processor.detect_phones(image)
+    # Read image
+    image = cv2.imread(image_path)
+    if image is None:
+        print(f"Error: Could not read image {image_path}")
+        return []
     
-    # Get the paths of saved images
-    saved_paths = []
-    for i in range(len(phone_images)):
-        saved_paths.append(os.path.join(output_dir, f"phone_{i+1}.png"))
+    # Process image
+    processed_images = processor.detect_phones(image)
     
-    return saved_paths
+    # Save processed images
+    output_paths = []
+    for i, processed_img in enumerate(processed_images):
+        # Get the original filename without extension
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        output_path = os.path.join(output_dir, f"{base_name}_phone_{i+1}.png")
+        cv2.imwrite(output_path, processed_img)
+        output_paths.append(output_path)
+        print(f"Saved processed phone {i+1} to: {output_path}")
+    
+    return output_paths
+
+def main():
+    # Set input and output directories
+    input_dir = "preprocessed_images"
+    output_dir = "processed_phones"
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Get all image files from input directory
+    image_files = [f for f in os.listdir(input_dir) 
+                  if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp'))]
+    
+    print(f"\nFound {len(image_files)} images to process:")
+    for img in image_files:
+        print(f"- {img}")
+    
+    # Process each image
+    total_processed = 0
+    for image_file in image_files:
+        try:
+            image_path = os.path.join(input_dir, image_file)
+            print(f"\nProcessing {image_file}...")
+            output_paths = process_phone_image(image_path, output_dir)
+            total_processed += len(output_paths)
+            print(f"Successfully processed {len(output_paths)} phones from {image_file}")
+        except Exception as e:
+            print(f"Error processing {image_file}: {str(e)}")
+            continue
+    
+    print(f"\nProcessing complete!")
+    print(f"Successfully processed {total_processed} phones from {len(image_files)} images")
 
 if __name__ == "__main__":
-    # Process all JPG files in source_image_jpg directory
-    source_dir = "source_image_jpg"
-    if not os.path.exists(source_dir):
-        print(f"Error: Directory {source_dir} does not exist")
-        exit(1)
-        
-    # Get all jpg/jpeg files
-    image_files = [f for f in os.listdir(source_dir) if f.lower().endswith(('.jpg', '.jpeg'))]
-    
-    if not image_files:
-        print(f"No JPG/JPEG files found in {source_dir}")
-        exit(1)
-        
-    print(f"Found {len(image_files)} JPG/JPEG files to process")
-    
-    # Process each file
-    for image_file in image_files:
-        image_path = os.path.join(source_dir, image_file)
-        print(f"\nProcessing {image_file}...")
-        try:
-            saved_paths = process_phone_image(image_path)
-            print(f"Successfully processed {image_file}:")
-            for path in saved_paths:
-                print(f"- {path}")
-        except Exception as e:
-            print(f"Error processing {image_file}: {e}")
-            continue 
+    main() 

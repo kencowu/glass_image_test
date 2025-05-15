@@ -115,35 +115,42 @@ class ImagePreprocessor:
             
         processed_paths = []
         
-        # Get all image files
+        # Get all image files with more comprehensive extensions
         image_files = [f for f in os.listdir(source_dir) 
-                      if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp'))]
+                      if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp', '.avif', '.tiff', '.tif'))]
         
-        print(f"Found {len(image_files)} images to process")
+        print(f"\nFound {len(image_files)} images to process:")
+        for img in image_files:
+            print(f"- {img}")
         
         for image_file in image_files:
-            # Read image
-            image_path = os.path.join(source_dir, image_file)
-            image = cv2.imread(image_path)
-            
-            if image is None:
-                print(f"Warning: Could not read image {image_file}")
-                continue
+            try:
+                # Read image
+                image_path = os.path.join(source_dir, image_file)
+                image = cv2.imread(image_path)
                 
-            # Preprocess image
-            processed = self.preprocess_image(image)
-            
-            # Determine output filename and extension
-            base_name, ext = os.path.splitext(image_file)
-            if ext.lower() == '.webp':
+                if image is None:
+                    print(f"\nError: Could not read image {image_file}")
+                    continue
+                    
+                # Preprocess image
+                processed = self.preprocess_image(image)
+                
+                # Determine output filename and extension
+                base_name, ext = os.path.splitext(image_file)
+                # Convert all output to jpg for consistency
                 output_filename = f"preprocessed_{base_name}.jpg"
-            else:
-                output_filename = f"preprocessed_{image_file}"
-            output_path = os.path.join(self.output_dir, output_filename)
-            cv2.imwrite(output_path, cv2.cvtColor(processed, cv2.COLOR_RGB2BGR))
-            processed_paths.append(output_path)
-            
-            print(f"Processed {image_file}")
+                output_path = os.path.join(self.output_dir, output_filename)
+                
+                # Save the processed image
+                cv2.imwrite(output_path, cv2.cvtColor(processed, cv2.COLOR_RGB2BGR))
+                processed_paths.append(output_path)
+                
+                print(f"✓ Successfully processed: {image_file} -> {output_filename}")
+                
+            except Exception as e:
+                print(f"\nError processing {image_file}: {str(e)}")
+                continue
             
         return processed_paths
 
@@ -153,12 +160,14 @@ def main():
     
     # Process all images in source_image directory
     try:
+        print("\nStarting image preprocessing...")
         processed_paths = preprocessor.process_directory()
-        print(f"\nSuccessfully processed {len(processed_paths)} images:")
+        print(f"\nProcessing complete!")
+        print(f"Successfully processed {len(processed_paths)} images:")
         for path in processed_paths:
             print(f"- {path}")
     except Exception as e:
-        print(f"Error during processing: {e}")
+        print(f"\nError during processing: {e}")
         import traceback
         traceback.print_exc()
 
