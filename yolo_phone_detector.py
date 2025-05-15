@@ -24,7 +24,7 @@ class YOLOPhoneDetector:
         self.model.multi_label = True  # Allow multiple labels per box
         print("YOLO model loaded successfully")
         self.target_size = target_size
-        self.output_dir = "yolo_processed_phones"
+        self.output_dir = "processed_phones"
         os.makedirs(self.output_dir, exist_ok=True)
         print(f"Output directory created/verified: {self.output_dir}")
         
@@ -169,16 +169,33 @@ def detect_phones_yolo(image_path: str) -> List[str]:
     return [os.path.join(detector.output_dir, f"phone_{i+1}.jpg") 
             for i in range(len(phone_images))]
 
+def main():
+    # Set input directory
+    input_dir = "processed_phones"
+    
+    # Get all image files from input directory
+    image_files = [f for f in os.listdir(input_dir) 
+                  if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp'))]
+    
+    print(f"\nFound {len(image_files)} images to process:")
+    for img in image_files:
+        print(f"- {img}")
+    
+    # Process each image
+    total_processed = 0
+    for image_file in image_files:
+        try:
+            image_path = os.path.join(input_dir, image_file)
+            print(f"\nProcessing {image_file}...")
+            saved_paths = detect_phones_yolo(image_path)
+            total_processed += len(saved_paths)
+            print(f"Successfully processed {len(saved_paths)} phones from {image_file}")
+        except Exception as e:
+            print(f"Error processing {image_file}: {str(e)}")
+            continue
+    
+    print(f"\nProcessing complete!")
+    print(f"Successfully processed {total_processed} phones from {len(image_files)} images")
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        image_path = sys.argv[1]
-    try:
-        print(f"Processing image: {image_path}")
-        saved_paths = detect_phones_yolo(image_path)
-        print(f"\nProcessed {len(saved_paths)} phones:")
-        for path in saved_paths:
-            print(f"- {path}")
-    except Exception as e:
-        print(f"Error processing image: {e}")
-        import traceback
-        traceback.print_exc() 
+    main() 
