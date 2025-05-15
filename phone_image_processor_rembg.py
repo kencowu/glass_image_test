@@ -280,16 +280,25 @@ def process_phone_image(image_path: str) -> List[str]:
     if image is None:
         raise ValueError(f"Could not read image at {image_path}")
     
+    # Get the base filename without extension
+    base_filename = os.path.splitext(os.path.basename(image_path))[0]
+    
     # Process the image
     processor = PhoneImageProcessor()
     phone_images = processor.detect_phones(image)
     
-    return [os.path.join(processor.output_dir, f"phone_{i+1}.png") 
-            for i in range(len(phone_images))]
+    # Save each phone with a unique name based on the input filename
+    saved_paths = []
+    for i, phone_img in enumerate(phone_images):
+        output_path = os.path.join(processor.output_dir, f"{base_filename}_phone_{i+1}.png")
+        cv2.imwrite(output_path, phone_img)
+        saved_paths.append(output_path)
+    
+    return saved_paths
 
 def main():
     # Set input directory
-    input_dir = "processed_phones"
+    input_dir = "preprocessed_images"
     
     # Get all image files from input directory
     image_files = [f for f in os.listdir(input_dir) 
@@ -308,6 +317,8 @@ def main():
             saved_paths = process_phone_image(image_path)
             total_processed += len(saved_paths)
             print(f"Successfully processed {len(saved_paths)} phones from {image_file}")
+            for path in saved_paths:
+                print(f"  - Saved to: {path}")
         except Exception as e:
             print(f"Error processing {image_file}: {str(e)}")
             continue
