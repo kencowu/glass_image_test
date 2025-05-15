@@ -6,7 +6,7 @@ import os
 import sys
 
 class YOLOPhoneDetector:
-    def __init__(self, target_size: Tuple[int, int] = (300, 600), conf_threshold: float = 0.15):
+    def __init__(self, target_size: Tuple[int, int] = (300, 600), conf_threshold: float = 0.1):
         """
         Initialize the YOLO phone detector.
         
@@ -15,10 +15,10 @@ class YOLOPhoneDetector:
             conf_threshold: Confidence threshold for detections
         """
         print("Initializing YOLO model...")
-        # Load the YOLOv8 detection-only model
+        # Load the YOLOv8m model (medium size, better accuracy)
         self.model = YOLO('yolov8m.pt')
         # Set model parameters
-        self.model.conf = conf_threshold  # Even lower confidence threshold
+        self.model.conf = conf_threshold  # Lower confidence threshold
         self.model.iou = 0.45  # IOU threshold for NMS
         self.model.agnostic = True  # Class-agnostic NMS
         self.model.multi_label = True  # Allow multiple labels per box
@@ -163,7 +163,7 @@ def detect_phones_yolo(image_path: str) -> List[str]:
         List of paths to the saved phone images
     """
     print(f"Starting phone detection for image: {image_path}")
-    detector = YOLOPhoneDetector(conf_threshold=0.15)  # Even lower confidence threshold
+    detector = YOLOPhoneDetector(conf_threshold=0.1)  # Lower confidence threshold
     phone_images = detector.detect_phones(image_path)
     
     return [os.path.join(detector.output_dir, f"phone_{i+1}.jpg") 
@@ -172,8 +172,6 @@ def detect_phones_yolo(image_path: str) -> List[str]:
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         image_path = sys.argv[1]
-    else:
-        image_path = "modern-touch-screen-smartphone-broken-600nw-2524629559.webp"
     try:
         print(f"Processing image: {image_path}")
         saved_paths = detect_phones_yolo(image_path)

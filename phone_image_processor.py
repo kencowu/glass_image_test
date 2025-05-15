@@ -3,8 +3,6 @@ import numpy as np
 import os
 from typing import List, Tuple
 import imutils
-import torch
-from segment_anything import sam_model_registry, SamPredictor
 
 class PhoneImageProcessor:
     def __init__(self, target_size: Tuple[int, int] = (300, 600)):
@@ -18,117 +16,6 @@ class PhoneImageProcessor:
         self.output_dir = "processed_phones"
         self.reference_angle = None  # Store the angle of the first phone
         os.makedirs(self.output_dir, exist_ok=True)
-        
-        # Initialize SAM
-        model_type = "vit_h"
-        sam_checkpoint = "sam_vit_h_4b8939.pth"
-        
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {device}")
-        
-        try:
-            sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-            sam.to(device=device)
-            self.predictor = SamPredictor(sam)
-            print("SAM model loaded successfully")
-        except Exception as e:
-            print(f"Warning: Could not load SAM model: {e}")
-            self.predictor = None
-
-    def _create_phone_mask_with_sam(self, image: np.ndarray) -> np.ndarray:
-        """
-        Create a mask for the phone using SAM.
-        
-        Args:
-            image: Input BGR image
-            
-        Returns:
-            Binary mask where phone is white (255) and background is black (0)
-        """
-        if self.predictor is None:
-            print("Warning: SAM not available, falling back to traditional method")
-            return self._create_phone_mask_traditional(image)
-            
-        try:
-            # Set the image for the predictor
-            self.predictor.set_image(image)
-            
-            # Get image dimensions
-            height, width = image.shape[:2]
-            
-            # Create a point prompt in the center of the image
-            center_x = width // 2
-            center_y = height // 2
-            input_point = np.array([[center_x, center_y]])
-            input_label = np.array([1])  # 1 indicates foreground
-            
-            # Generate mask
-            masks, scores, _ = self.predictor.predict(
-                point_coords=input_point,
-                point_labels=input_label,
-                multimask_output=True
-            )
-            
-            # Select the mask with the highest score
-            mask_idx = np.argmax(scores)
-            mask = masks[mask_idx].astype(np.uint8) * 255
-            
-            # Apply some post-processing to clean up the mask
-            kernel = np.ones((5,5), np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-            
-            return mask
-            
-        except Exception as e:
-            print(f"Warning: SAM prediction failed: {e}")
-            return self._create_phone_mask_traditional(image)
-
-    def _create_phone_mask_traditional(self, image: np.ndarray) -> np.ndarray:
-        """
-        Traditional method for creating a phone mask (fallback method).
-        """
-        # Previous implementation of _create_phone_mask
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.bilateralFilter(gray, 9, 75, 75)
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        
-        # Create a mask for dark colors (typical for black phones)
-        lower_black = np.array([0, 0, 0])
-        upper_black = np.array([180, 40, 60])
-        black_mask = cv2.inRange(hsv, lower_black, upper_black)
-        
-        # Create a mask for bright colors (typical for white cracks)
-        lower_white = np.array([0, 0, 190])
-        upper_white = np.array([180, 30, 255])
-        white_mask = cv2.inRange(hsv, lower_white, upper_white)
-        
-        # Create a mask for medium-dark colors (typical for phone edges)
-        lower_dark = np.array([0, 0, 30])
-        upper_dark = np.array([180, 45, 100])
-        dark_mask = cv2.inRange(hsv, lower_dark, upper_dark)
-        
-        # Combine color masks
-        color_mask = cv2.bitwise_or(black_mask, white_mask)
-        color_mask = cv2.bitwise_or(color_mask, dark_mask)
-        
-        # Apply Otsu's thresholding
-        _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        
-        # Apply Canny edge detection
-        edges = cv2.Canny(blurred, 50, 150)
-        edges = cv2.dilate(edges, np.ones((3,3), np.uint8), iterations=1)
-        
-        # Combine masks
-        mask = cv2.bitwise_and(binary, color_mask)
-        mask = cv2.bitwise_or(mask, edges)
-        
-        # Clean up
-        kernel = np.ones((5,5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        
-        return mask
 
     def detect_phones(self, image: np.ndarray) -> List[np.ndarray]:
         """
@@ -143,11 +30,22 @@ class PhoneImageProcessor:
         # Get image dimensions
         height, width = image.shape[:2]
         
-        # Get the phone mask using SAM
-        mask = self._create_phone_mask_with_sam(image)
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Apply bilateral filter to reduce noise while preserving edges
+        blurred = cv2.bilateralFilter(gray, 9, 75, 75)
+        
+        # Apply Canny edge detection
+        edges = cv2.Canny(blurred, 30, 150)
+        
+        # Apply morphological operations
+        kernel = np.ones((5,5), np.uint8)
+        dilated = cv2.dilate(edges, kernel, iterations=2)
+        closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, kernel, iterations=2)
         
         # Find contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         # Filter and merge nearby contours
         min_area = width * height * 0.05  # Minimum 5% of image area
@@ -176,7 +74,7 @@ class PhoneImageProcessor:
             # Get bounding rectangle
             x, y, w, h = cv2.boundingRect(contour)
             
-            # Add padding
+            # Add padding (percentage based)
             padding_x = int(w * 0.1)
             padding_y = int(h * 0.1)
             
@@ -203,7 +101,7 @@ class PhoneImageProcessor:
             
             # Calculate percentage of background pixels
             total_pixels = processed_phone.shape[0] * processed_phone.shape[1]
-            background_pixels = np.sum(processed_phone[:, :, 3] == 0)
+            background_pixels = np.sum(processed_phone[:, :, 3] == 0)  # Count transparent pixels
             background_percentage = (background_pixels / total_pixels) * 100
             print(f"Background percentage: {background_percentage:.2f}%")
             print(f"Saved to: {output_path}")
@@ -249,146 +147,124 @@ class PhoneImageProcessor:
             
         return angle
 
-    def _apply_grabcut_refinement(self, image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
+    def _create_phone_mask(self, image: np.ndarray) -> np.ndarray:
         """
-        Apply GrabCut algorithm to refine the segmentation mask.
+        Create a mask for the phone using color and edge information.
         
         Args:
-            image: Input BGR image
-            initial_mask: Initial binary mask where phone is white (255) and background is black (0)
+            image: Input image
             
         Returns:
-            Refined binary mask
+            Binary mask where phone is white (255) and background is black (0)
         """
-        # Create a mask for GrabCut
-        # 0 - background, 1 - foreground, 2 - probable background, 3 - probable foreground
-        mask = np.zeros(image.shape[:2], np.uint8)
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # Use our initial mask to mark probable foreground/background
-        mask[initial_mask == 0] = 0    # Definite background
-        mask[initial_mask == 255] = 3  # Probable foreground
+        # Apply bilateral filter to reduce noise while preserving edges
+        blurred = cv2.bilateralFilter(gray, 9, 75, 75)
         
-        # Create temporary arrays for GrabCut
-        bgdModel = np.zeros((1,65), np.float64)
-        fgdModel = np.zeros((1,65), np.float64)
+        # Color-based segmentation
+        # Convert to HSV for better color separation
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
-        # Define ROI rectangle (use the entire image)
-        rect = (0, 0, image.shape[1], image.shape[0])
+        # Create a mask for dark colors (typical for black phones)
+        lower_black = np.array([0, 0, 0])
+        upper_black = np.array([180, 40, 60])  # More strict black range
+        black_mask = cv2.inRange(hsv, lower_black, upper_black)
         
-        # Apply GrabCut
-        try:
-            cv2.grabCut(image, mask, rect, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_MASK)
-        except Exception as e:
-            print(f"Warning: GrabCut refinement failed: {e}")
-            return initial_mask
-            
-        # Create mask where 1 and 3 are foreground
-        refined_mask = np.where((mask==2)|(mask==0), 0, 255).astype('uint8')
+        # Create a mask for bright colors (typical for white cracks)
+        lower_white = np.array([0, 0, 190])  # More strict white range
+        upper_white = np.array([180, 30, 255])
+        white_mask = cv2.inRange(hsv, lower_white, upper_white)
         
-        return refined_mask
-
-    def _apply_lab_refinement(self, image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
-        """
-        Apply LAB color space-based refinement to improve segmentation.
+        # Create a mask for medium-dark colors (typical for phone edges)
+        lower_dark = np.array([0, 0, 30])
+        upper_dark = np.array([180, 45, 100])
+        dark_mask = cv2.inRange(hsv, lower_dark, upper_dark)
         
-        Args:
-            image: Input BGR image
-            initial_mask: Initial binary mask
-            
-        Returns:
-            Refined binary mask
-        """
-        # Convert to LAB color space
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        # Combine color masks
+        color_mask = cv2.bitwise_or(black_mask, white_mask)
+        color_mask = cv2.bitwise_or(color_mask, dark_mask)
         
-        # Apply CLAHE to L channel to enhance contrast
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-        l = clahe.apply(l)
+        # Apply more aggressive thresholding
+        # First, apply Otsu's thresholding with a slight bias towards foreground
+        _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         
-        # Threshold each channel
-        _, l_mask = cv2.threshold(l, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        _, a_mask = cv2.threshold(a, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        _, b_mask = cv2.threshold(b, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Apply Canny edge detection with tighter thresholds
+        edges = cv2.Canny(blurred, 50, 150)
         
-        # Combine masks
-        lab_mask = cv2.bitwise_and(l_mask, cv2.bitwise_or(a_mask, b_mask))
+        # Dilate edges to connect nearby edges
+        kernel_edge = np.ones((3,3), np.uint8)
+        edges = cv2.dilate(edges, kernel_edge, iterations=1)
         
-        # Combine with initial mask
-        combined_mask = cv2.bitwise_and(initial_mask, lab_mask)
+        # Then apply adaptive thresholding for better edge detection
+        adaptive = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY_INV, 11, 2)
         
-        # Clean up the mask
+        # Combine thresholding results first
+        mask = cv2.bitwise_and(binary, adaptive)
+        
+        # Apply initial morphological operations
         kernel = np.ones((5,5), np.uint8)
-        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
         
-        return combined_mask
-
-    def _apply_watershed_refinement(self, image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
-        """
-        Apply watershed algorithm to refine segmentation.
+        # Add edge information
+        mask = cv2.bitwise_or(mask, edges)
         
-        Args:
-            image: Input BGR image
-            initial_mask: Initial binary mask
+        # Combine with color mask
+        mask = cv2.bitwise_and(mask, color_mask)
+        
+        # Final morphological operations
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        
+        # Find the largest contour (should be the phone)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            # Get all contours above a certain area threshold
+            min_area = image.shape[0] * image.shape[1] * 0.01  # 1% of image area
+            valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_area]
             
-        Returns:
-            Refined binary mask
-        """
-        # Create markers for watershed
-        sure_bg = cv2.dilate(initial_mask, np.ones((3,3), np.uint8), iterations=3)
-        
-        dist_transform = cv2.distanceTransform(initial_mask, cv2.DIST_L2, 5)
-        _, sure_fg = cv2.threshold(dist_transform, 0.5 * dist_transform.max(), 255, 0)
-        sure_fg = np.uint8(sure_fg)
-        
-        unknown = cv2.subtract(sure_bg, sure_fg)
-        
-        # Label markers
-        _, markers = cv2.connectedComponents(sure_fg)
-        markers = markers + 1
-        markers[unknown == 255] = 0
-        
-        # Apply watershed
-        markers = cv2.watershed(image, markers)
-        
-        # Create mask from watershed result
-        mask = np.zeros(image.shape[:2], dtype=np.uint8)
-        mask[markers > 1] = 255
-        
-        return mask
-
-    def _apply_kmeans_refinement(self, image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
-        """
-        Apply K-means clustering to refine segmentation.
-        
-        Args:
-            image: Input BGR image
-            initial_mask: Initial binary mask
-            
-        Returns:
-            Refined binary mask
-        """
-        # Prepare data for clustering
-        pixels = image.reshape((-1, 3))
-        pixels = np.float32(pixels)
-        
-        # Define criteria and apply kmeans
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
-        k = 2  # We want to separate into foreground and background
-        _, labels, centers = cv2.kmeans(pixels, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-        
-        # Convert back to uint8
-        centers = np.uint8(centers)
-        segmented = centers[labels.flatten()]
-        segmented = segmented.reshape(image.shape)
-        
-        # Convert to grayscale and threshold
-        gray = cv2.cvtColor(segmented, cv2.COLOR_BGR2GRAY)
-        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Combine with initial mask
-        mask = cv2.bitwise_and(mask, initial_mask)
+            if valid_contours:
+                # Create a new mask with only the valid contours
+                mask = np.zeros_like(mask)
+                cv2.drawContours(mask, valid_contours, -1, 255, -1)
+                
+                # Apply one final closing operation to smooth the edges
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+                
+                # Create a refined color mask for the final result
+                refined_mask = np.zeros_like(mask)
+                for contour in valid_contours:
+                    # Get the bounding box of the contour
+                    x, y, w, h = cv2.boundingRect(contour)
+                    # Extract the region of interest
+                    roi = image[y:y+h, x:x+w]
+                    roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+                    
+                    # Create masks for black and white in the ROI with more strict ranges
+                    roi_black = cv2.inRange(roi_hsv, lower_black, upper_black)
+                    roi_white = cv2.inRange(roi_hsv, lower_white, upper_white)
+                    roi_dark = cv2.inRange(roi_hsv, lower_dark, upper_dark)
+                    
+                    # Combine the masks
+                    roi_mask = cv2.bitwise_or(roi_black, roi_white)
+                    roi_mask = cv2.bitwise_or(roi_mask, roi_dark)
+                    
+                    # Apply morphological operations to clean up the ROI mask
+                    roi_mask = cv2.morphologyEx(roi_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+                    roi_mask = cv2.morphologyEx(roi_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+                    
+                    # Place the ROI mask back in the refined mask
+                    refined_mask[y:y+h, x:x+w] = roi_mask
+                
+                # Combine the refined mask with the original mask
+                mask = cv2.bitwise_and(mask, refined_mask)
+                
+                # Final cleanup of the mask
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
         
         return mask
 
@@ -402,36 +278,43 @@ class PhoneImageProcessor:
         Returns:
             Processed phone image
         """
-        # Get the initial mask using SAM
-        mask = self._create_phone_mask_with_sam(phone_img)
+        # Convert to grayscale
+        gray = cv2.cvtColor(phone_img, cv2.COLOR_BGR2GRAY)
         
-        # Calculate the angle
-        current_angle = self._calculate_phone_angle(mask)
+        # Apply threshold to get binary image
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        
+        # Calculate the angle of the phone
+        current_angle = self._calculate_phone_angle(binary)
         print(f"Detected phone angle: {current_angle:.2f} degrees")
         
-        # Rotate if needed
-        if abs(current_angle - 90) > 0.5:
+        # Rotate the image to align with vertical orientation
+        if abs(current_angle - 90) > 0.5:  # Only rotate if not close to vertical
             rotation_angle = 90 - current_angle
             print(f"Rotating image by {rotation_angle:.2f} degrees to make it vertical")
             rotated = imutils.rotate_bound(phone_img, rotation_angle)
-            # Update mask after rotation
-            mask = self._create_phone_mask_with_sam(rotated)
+            # Update binary image and gray after rotation
+            gray = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
+            _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
             print("Image has been rotated to vertical orientation")
         else:
             print("Image is already vertical (within 0.5 degrees), no rotation needed")
             rotated = phone_img
         
+        # Create a mask for the phone
+        mask = self._create_phone_mask(rotated)
+        
         # Find contours in the mask
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if contours:
-            # Get the largest contour
+            # Get the largest contour (should be the phone)
             largest_contour = max(contours, key=cv2.contourArea)
             
             # Get the bounding rectangle
             x, y, w, h = cv2.boundingRect(largest_contour)
             
-            # Add padding
+            # Add padding to ensure we capture the entire phone
             padding = 10
             x = max(0, x - padding)
             y = max(0, y - padding)
@@ -444,19 +327,19 @@ class PhoneImageProcessor:
             mask = mask[y:y+h, x:x+w]
         else:
             cropped = rotated
-            mask = self._create_phone_mask_with_sam(cropped)
+            mask = self._create_phone_mask(cropped)
         
         # Resize to target size while maintaining aspect ratio
         h, w = cropped.shape[:2]
         aspect = w / float(h)
         
         # Calculate new dimensions
-        new_h = self.target_size[1]
-        new_w = int(new_h * aspect)
+        new_h = self.target_size[1]  # Set height to target height
+        new_w = int(new_h * aspect)  # Calculate width to maintain aspect ratio
         
         if new_w > self.target_size[0]:
-            new_w = self.target_size[0]
-            new_h = int(new_w / aspect)
+            new_w = self.target_size[0]  # Cap width at target width
+            new_h = int(new_w / aspect)  # Recalculate height
         
         # Resize the image and mask
         resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
@@ -474,7 +357,7 @@ class PhoneImageProcessor:
         # Apply the mask to create transparency
         resized_rgba[:, :, 3] = resized_mask
         
-        # Calculate position to paste the resized image
+        # Calculate position to paste the resized image (center it)
         x_offset = (self.target_size[0] - new_w) // 2
         y_offset = (self.target_size[1] - new_h) // 2
         
