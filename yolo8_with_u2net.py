@@ -7,6 +7,7 @@ import sys
 from PIL import Image
 import imutils
 from ultralytics import YOLO
+from rembg import remove, new_session
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 
@@ -159,11 +160,9 @@ class YOLOPhoneDetector:
         self.model.iou = 0.45  # NMS IoU threshold
         print("YOLO model loaded successfully")
         
-        # Initialize U2Net model
+        # Initialize U2Net model through rembg
         print("Initializing U2Net model...")
-        self.u2net = U2NET()
-        self.u2net.load_state_dict(torch.load('u2net.pth', map_location='cpu'))
-        self.u2net.eval()
+        self.u2net_session = new_session("u2net")
         print("U2Net model loaded successfully")
         
         self.target_size = target_size
@@ -180,7 +179,7 @@ class YOLOPhoneDetector:
 
     def _create_phone_mask(self, image: np.ndarray) -> np.ndarray:
         """
-        Create a mask for the phone using U2Net.
+        Create a mask for the phone using U2Net through rembg.
         
         Args:
             image: Input BGR image
@@ -195,22 +194,14 @@ class YOLOPhoneDetector:
             # Convert to PIL Image
             pil_image = Image.fromarray(rgb_image)
             
-            # Transform image
-            img_tensor = self.transform(pil_image).unsqueeze(0)
+            # Remove background using U2Net
+            output = remove(pil_image, session=self.u2net_session)
             
-            # Get prediction
-            with torch.no_grad():
-                d0, _, _, _, _, _, _ = self.u2net(img_tensor)
-                pred = d0[:, 0, :, :]
-                pred = pred.squeeze()
-                pred_np = pred.cpu().data.numpy()
+            # Convert to numpy array
+            output_np = np.array(output)
             
-            # Resize prediction to original image size
-            pred_np = cv2.resize(pred_np, (image.shape[1], image.shape[0]))
-            
-            # Convert to binary mask
-            mask = (pred_np * 255).astype(np.uint8)
-            _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+            # Create binary mask from alpha channel
+            mask = output_np[:, :, 3]
             
             return mask
             
@@ -253,8 +244,46 @@ class YOLOPhoneDetector:
         # If the center of mass is in the bottom half, flip the phone
         if center_y > height / 2:
             angle = (angle + 180) % 180
-            
+        
+        # Debug print to show the final angle
+        print(f"Final phone angle after normalization: {angle:.2f} degrees")
+        
         return angle
+
+    def _is_vertical_using_contour(self, image: np.ndarray) -> bool:
+        """
+        Check if the phone is vertical using contour analysis.
+        
+        Args:
+            image: Input BGR image
+            
+        Returns:
+            True if the phone is vertical, False otherwise
+        """
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Edge detection using Canny
+        edges = cv2.Canny(blurred, 50, 150)
+        
+        # Find contours
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if not contours:
+            return False
+        
+        # Get the largest contour
+        largest_contour = max(contours, key=cv2.contourArea)
+        
+        # Fit a rectangle to the contour
+        rect = cv2.minAreaRect(largest_contour)
+        angle = rect[2]
+        
+        # Check if the angle is close to vertical (90 degrees)
+        return abs(angle - 90) < 10 or abs(angle - 270) < 10
 
     def _process_phone_image(self, phone_img: np.ndarray) -> np.ndarray:
         """
@@ -273,16 +302,35 @@ class YOLOPhoneDetector:
         current_angle = self._calculate_phone_angle(mask)
         print(f"Detected phone angle: {current_angle:.2f} degrees")
         
-        # Rotate if needed
-        if abs(current_angle - 90) > 0.5:
+        # Calculate aspect ratio of the phone
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            aspect_ratio = float(w) / h
+            print(f"Phone aspect ratio: {aspect_ratio:.2f}")
+        else:
+            aspect_ratio = 1.0
+            print("No contours found, using default aspect ratio")
+        
+        # Only rotate if:
+        # 1. The angle is significantly off vertical (> 5 degrees)
+        # 2. The aspect ratio suggests the phone is not vertical (width > height)
+        should_rotate = abs(current_angle - 90) > 5 and aspect_ratio > 1.0
+        
+        if should_rotate:
             rotation_angle = 90 - current_angle
             print(f"Rotating image by {rotation_angle:.2f} degrees to make it vertical")
-            rotated = imutils.rotate_bound(phone_img, rotation_angle)
+            # Convert to PIL Image for rotation
+            pil_image = Image.fromarray(cv2.cvtColor(phone_img, cv2.COLOR_BGR2RGB))
+            rotated_pil = pil_image.rotate(rotation_angle, expand=True)
+            # Convert back to OpenCV format
+            rotated = cv2.cvtColor(np.array(rotated_pil), cv2.COLOR_RGB2BGR)
             # Update mask after rotation
             mask = self._create_phone_mask(rotated)
             print("Image has been rotated to vertical orientation")
         else:
-            print("Image is already vertical (within 0.5 degrees), no rotation needed")
+            print("Image is already vertical or rotation not needed")
             rotated = phone_img
         
         # Find contours in the mask
