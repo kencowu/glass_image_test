@@ -1,0 +1,10 @@
+ultralytics>=8.0.0  # For YOLOv8
+opencv-python>=4.8.0
+numpy>=1.24.0
+torch>=2.0.0  # Required by ultralytics
+torchvision>=0.15.0  # Required by YOLOv5
+Pillow>=9.0.0  # Required for image processing
+rembg>=2.0.0  # For background removal
+imutils>=0.5.4  # For image rotation and processing
+coloredlogs>=15.0.1  # For better logging
+humanfriendly>=10.0  # Required by coloredlogs 

@@ -1,0 +1,96 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+source_image/
+preprocessed_images/
+processed_phones/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.avif
+*.tiff
+*.tif
+
+# Keep only the code files
+!*.py
+!requirements.txt
+!README.md
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Large files and packages
+*.pth
+sam_vit_h_4b8939.pth
+*.onnx
+*.h5
+*.hdf5
+*.model
+*.weights
+*.bin
+*.pt
+*.pkl
+*.joblib
+*.npy
+*.npz
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Model files
+.u2net/
+models/
+weights/
+checkpoints/
+sam/
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+logs/
+
+# YOLO model files
+*.pt
+yolov8*.pt 
