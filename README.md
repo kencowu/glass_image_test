@@ -1,19 +1,21 @@
-# Phone Image Processing
+# Phone Image Processing Pipeline
 
-This project contains scripts for processing phone images using various computer vision techniques.
+This project provides a pipeline for processing phone images, including preprocessing and background removal. It uses OpenCV for image processing and is designed to handle multiple phones in a single image.
 
 ## Features
 
-- Phone detection using YOLOv8
-- Background removal
-- Image preprocessing and enhancement
+- Image preprocessing with adaptive thresholding
+- Phone detection using contour analysis
+- Background removal with transparency
+- Support for multiple phones in a single image
+- Maintains aspect ratio during processing
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.6+
 - OpenCV
-- Ultralytics YOLO
 - NumPy
+- imutils
 
 ## Installation
 
@@ -23,39 +25,35 @@ git clone <repository-url>
 cd <repository-name>
 ```
 
-2. Create and activate a conda environment:
+2. Install the required packages:
 ```bash
-conda create -n lab_image_test python=3.8
-conda activate lab_image_test
-```
-
-3. Install dependencies:
-```bash
-pip install ultralytics opencv-python numpy
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-### Phone Detection
+1. Place your source images in the `source_image` directory.
 
-To detect phones in an image using YOLOv8:
-
+2. Run the preprocessing script:
 ```bash
-python yolo_phone_detector.py path/to/your/image.jpg
+python image_preprocessor.py
 ```
 
-The script will:
-1. Load the YOLOv8 model
-2. Process the input image
-3. Detect phones in the image
-4. Save detected phones to the `yolo_processed_phones` directory
+3. Run the background removal script:
+```bash
+python background_removal_opencv.py
+```
+
+The processed images will be saved in the `processed_phones` directory.
 
 ## Project Structure
 
-- `yolo_phone_detector.py`: Main script for phone detection using YOLOv8
-- `yolo_processed_phones/`: Directory for processed phone images
-- `source_image/`: Directory for source images
+- `image_preprocessor.py`: Handles image preprocessing
+- `background_removal_opencv.py`: Removes backgrounds from detected phones
+- `source_image/`: Directory for input images
+- `preprocessed_images/`: Directory for preprocessed images
+- `processed_phones/`: Directory for final output images
 
 ## License
 
-[Your chosen license] 
+MIT License 

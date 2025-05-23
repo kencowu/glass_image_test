@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -22,18 +23,32 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
 .env
-.venv
-env.bak/
-venv.bak/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Project specific
+source_image/
+preprocessed_images/
+processed_phones/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.avif
+*.tiff
+*.tif
+
+# Keep only the code files
+!*.py
+!requirements.txt
+!README.md
 
 # OS
 .DS_Store
@@ -43,18 +58,6 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Project specific
-yolo_processed_phones/
-# Ignore images except in preprocessed_images directory
-*.jpg
-*.jpeg
-*.png
-*.webp
-!preprocessed_images/*.jpg
-!preprocessed_images/*.jpeg
-!preprocessed_images/*.png
-!preprocessed_images/*.webp
 
 # Large files and packages
 *.pth
